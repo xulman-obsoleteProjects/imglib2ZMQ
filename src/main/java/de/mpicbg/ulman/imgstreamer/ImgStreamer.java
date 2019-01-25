@@ -245,8 +245,8 @@ public class ImgStreamer
 		for (int i=0; i < n; ++i)
 			dims[i] = Integer.valueOf(headerST.nextToken());
 
-		final String typeStr = new String(headerST.nextToken());
-		final String backendStr = new String(headerST.nextToken());
+		final String typeStr = headerST.nextToken();
+		final String backendStr = headerST.nextToken();
 
 		//envelope/header message is (mostly) parsed,
 		//start creating the output image of the appropriate type
