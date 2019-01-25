@@ -95,12 +95,39 @@ public class ImgStreamer
 			voxelBytesCount *= img.dimension(i);
 		}
 
-		//decipher the voxel type...
+		//decipher the voxel type
 		headerMsg += " " + voxelClass.getSimpleName();
 
-		//...and size
-		long pixelSize = 1;
-		final Object sampleArray = ((NativeImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray();
+		//check we can handle the storage model of this image,
+		//and check the pixel size
+		Object sampleArray = null;
+		if (img instanceof ArrayImg)
+		{
+			headerMsg += " ArrayImg ";
+			sampleArray = ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray();
+		}
+		else
+		if (img instanceof PlanarImg)
+		{
+			headerMsg += " PlanarImg ";
+			sampleArray = ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray();
+		}
+		else
+		if (img instanceof CellImg)
+		{
+			headerMsg += " CellImg ";
+			sampleArray = ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray();
+			throw new RuntimeException("Cannot stream CellImg images yet.");
+		}
+		else
+			throw new RuntimeException("Cannot determine the type of image, cannot stream it.");
+
+		long pixelSize;
+		if (sampleArray instanceof byte[])
+		{
+			pixelSize = 1;
+		}
+		else
 		if (sampleArray instanceof short[])
 		{
 			pixelSize = 2;
@@ -118,26 +145,6 @@ public class ImgStreamer
 		else
 			throw new RuntimeException("Unsupported voxel storage, sorry.");
 		voxelBytesCount *= pixelSize;
-
-		//check we can handle the storage model of this image
-		//TODO: can't it be done smarter?
-		if (img instanceof ArrayImg)
-		{
-			headerMsg += " ArrayImg ";
-		}
-		else
-		if (img instanceof PlanarImg)
-		{
-			headerMsg += " PlanarImg ";
-		}
-		else
-		if (img instanceof CellImg)
-		{
-			headerMsg += " CellImg ";
-			throw new RuntimeException("Cannot stream CellImg images yet.");
-		}
-		else
-			throw new RuntimeException("Cannot determine the type of image, cannot stream it.");
 
 		//process the metadata....
 		metadataBytes = packAndSendPlusData(imgToBeStreamed);
@@ -175,20 +182,28 @@ public class ImgStreamer
 		}
 
 		logger.info("streaming the image data...");
-		StreamFeeder sf = giveMeStreamFeeder((NativeImg)img);
 		if (img instanceof ArrayImg)
 		{
-			packAndSendArrayImg((ArrayImg)img, sf,dos);
+			packAndSendArrayImg((ArrayImg)img,
+				giveMeStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
+				dos);
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
-			packAndSendPlanarImg((PlanarImg)img, sf,dos);
+			packAndSendPlanarImg((PlanarImg)img,
+				giveMeStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
+				dos);
 		}
 		else
 		if (img instanceof CellImg)
 		{
 			throw new RuntimeException("Cannot stream CellImg images yet.");
+			/*
+			packAndSendCellImg((CellImg)img,
+				giveMeStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
+				dos);
+			*/
 		}
 		else
 			throw new RuntimeException("Unsupported image backend type, sorry.");
@@ -248,20 +263,28 @@ public class ImgStreamer
 			throw new RuntimeException("Refusing to stream an empty image...");
 
 		logger.info("processing the incoming image data...");
-		StreamFeeder sf = giveMeStreamFeeder((NativeImg)img);
 		if (img instanceof ArrayImg)
 		{
-			receiveAndUnpackArrayImg((ArrayImg)img, sf,dis);
+			receiveAndUnpackArrayImg((ArrayImg)img,
+				giveMeStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
+				dis);
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
-			receiveAndUnpackPlanarImg((PlanarImg)img, sf,dis);
+			receiveAndUnpackPlanarImg((PlanarImg)img,
+				giveMeStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
+				dis);
 		}
 		else
 		if (img instanceof CellImg)
 		{
 			throw new RuntimeException("Cannot stream CellImg images yet.");
+			/*
+			receiveAndUnpackCellImg((CellImg)img,
+				giveMeStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
+				dis);
+			*/
 		}
 		else
 			throw new RuntimeException("Unsupported image backend type, sorry.");
@@ -359,9 +382,8 @@ public class ImgStreamer
 	}
 
 	protected
-	StreamFeeder giveMeStreamFeeder(final NativeImg<?,? extends ArrayDataAccess<?>> img)
+	StreamFeeder giveMeStreamFeeder(final Object sampleArray)
 	{
-		final Object sampleArray = img.update(null).getCurrentStorageArray();
 		if (sampleArray instanceof byte[])
 		{
 			return new ByteStreamFeeder();
@@ -409,7 +431,7 @@ public class ImgStreamer
 	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
-			sf.write(img.getPlane(slice).getCurrentStorageArray(),os);
+			sf.write(img.getPlane(slice).getCurrentStorageArray(), os);
 	}
 
 	protected static
