@@ -10,7 +10,6 @@ package de.mpicbg.ulman.imgstreamer;
 import net.imagej.Dataset;
 import net.imagej.ImgPlus;
 import net.imglib2.img.Img;
-import net.imglib2.img.NativeImg;
 import net.imglib2.img.WrappedImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
@@ -27,10 +26,16 @@ import net.imglib2.type.numeric.integer.UnsignedShortType;
 import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.StringTokenizer;
+
+import static de.mpicbg.ulman.imgstreamer.StreamFeeders.createStreamFeeder;
 
 public class ImgStreamer
 {
@@ -69,7 +74,6 @@ public class ImgStreamer
 	private String headerMsg;
 	private byte[] metadataBytes;
 	private long voxelBytesCount;
-
 
 	public <T extends NativeType<T>>
 	void setImageForStreaming(final ImgPlus<T> imgToBeStreamed)
@@ -185,14 +189,14 @@ public class ImgStreamer
 		if (img instanceof ArrayImg)
 		{
 			packAndSendArrayImg((ArrayImg)img,
-				giveMeStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
+				createStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
 				dos);
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
 			packAndSendPlanarImg((PlanarImg)img,
-				giveMeStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
+				createStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
 				dos);
 		}
 		else
@@ -201,7 +205,7 @@ public class ImgStreamer
 			throw new RuntimeException("Cannot stream CellImg images yet.");
 			/*
 			packAndSendCellImg((CellImg)img,
-				giveMeStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
+				createStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
 				dos);
 			*/
 		}
@@ -266,14 +270,14 @@ public class ImgStreamer
 		if (img instanceof ArrayImg)
 		{
 			receiveAndUnpackArrayImg((ArrayImg)img,
-				giveMeStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
+				createStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
 				dis);
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
 			receiveAndUnpackPlanarImg((PlanarImg)img,
-				giveMeStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
+				createStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
 				dis);
 		}
 		else
@@ -282,7 +286,7 @@ public class ImgStreamer
 			throw new RuntimeException("Cannot stream CellImg images yet.");
 			/*
 			receiveAndUnpackCellImg((CellImg)img,
-				giveMeStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
+				createStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
 				dis);
 			*/
 		}
@@ -313,104 +317,9 @@ public class ImgStreamer
 
 
 	// -------- support for the transmission of the payload/voxel data --------
-	private interface StreamFeeder
-	{
-		void write(final Object inArray, final DataOutputStream outStream) throws IOException;
-		void  read(final DataInputStream inStream, final Object outArray) throws IOException;
-	}
-
-	private class ByteStreamFeeder implements StreamFeeder
-	{
-		@Override
-		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
-		{
-			outStream.write((byte[])inArray);
-		}
-		@Override
-		public void read(final DataInputStream inStream, final Object outArray) throws IOException
-		{
-			inStream.read((byte[])outArray);
-		}
-	}
-
-	private class ShortStreamFeeder implements StreamFeeder
-	{
-		@Override
-		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
-		{
-			final short[] inShorts = (short[])inArray;
-			for (int i=0; i < inShorts.length; ++i) outStream.writeShort(inShorts[i]);
-		}
-		@Override
-		public void read(final DataInputStream inStream, final Object outArray) throws IOException
-		{
-			final short[] outShorts = (short[])outArray;
-			for (int i=0; i < outShorts.length; ++i) outShorts[i]=inStream.readShort();
-		}
-	}
-
-	private class FloatStreamFeeder implements StreamFeeder
-	{
-		@Override
-		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
-		{
-			final float[] inFloats = (float[])inArray;
-			for (int i=0; i < inFloats.length; ++i) outStream.writeFloat(inFloats[i]);
-		}
-		@Override
-		public void read(final DataInputStream inStream, final Object outArray) throws IOException
-		{
-			final float[] outFloats = (float[])outArray;
-			for (int i=0; i < outFloats.length; ++i) outFloats[i]=inStream.readFloat();
-		}
-	}
-
-	private class DoubleStreamFeeder implements StreamFeeder
-	{
-		@Override
-		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
-		{
-			final double[] inDoubles = (double[])inArray;
-			for (int i=0; i < inDoubles.length; ++i) outStream.writeDouble(inDoubles[i]);
-		}
-		@Override
-		public void read(final DataInputStream inStream, final Object outArray) throws IOException
-		{
-			final double[] outDoubles = (double[])outArray;
-			for (int i=0; i < outDoubles.length; ++i) outDoubles[i]=inStream.readDouble();
-		}
-	}
-
-	protected
-	StreamFeeder giveMeStreamFeeder(final Object sampleArray)
-	{
-		if (sampleArray instanceof byte[])
-		{
-			return new ByteStreamFeeder();
-		}
-		else
-		if (sampleArray instanceof short[])
-		{
-			return new ShortStreamFeeder();
-		}
-		else
-		if (sampleArray instanceof float[])
-		{
-			return new FloatStreamFeeder();
-		}
-		else
-		if (sampleArray instanceof double[])
-		{
-			return new DoubleStreamFeeder();
-		}
-		else
-			throw new RuntimeException("Unsupported voxel storage, sorry.");
-	}
-
-
 	protected static <T extends NativeType<T>>
 	void packAndSendArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
-	                         final StreamFeeder sf, final DataOutputStream os)
+	                         final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
 		sf.write(img.update(null).getCurrentStorageArray(), os);
@@ -418,7 +327,7 @@ public class ImgStreamer
 
 	protected static <T extends NativeType<T>>
 	void receiveAndUnpackArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
-	                              final StreamFeeder sf, final DataInputStream is)
+	                              final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
 		sf.read(is, img.update(null).getCurrentStorageArray());
@@ -427,7 +336,7 @@ public class ImgStreamer
 
 	protected static
 	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img,
-	                          final StreamFeeder sf, final DataOutputStream os)
+	                          final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
@@ -436,7 +345,7 @@ public class ImgStreamer
 
 	protected static
 	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,ByteArray> img,
-	                               final StreamFeeder sf, final DataInputStream is)
+								   final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
