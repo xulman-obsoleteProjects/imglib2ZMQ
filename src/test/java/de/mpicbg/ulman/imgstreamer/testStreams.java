@@ -5,19 +5,16 @@ import java.io.*;
 import net.imagej.ImgPlus;
 import net.imglib2.Cursor;
 import net.imglib2.img.Img;
-import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
-import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
 
 public class testStreams
 {
 	public static void main(String... args)
 	{
 		testImgPlus();
-		testQueingOfObjectsInAStream();
+		//testQueingOfObjectsInAStream();
 	}
-
 
 	static
 	void testImgPlus()
@@ -28,7 +25,6 @@ public class testStreams
 			public void info(String msg) {
 				System.out.println(msg);
 			}
-
 			@Override
 			public void setProgress(float howFar) {
 				System.out.println("progress: "+howFar);
@@ -37,24 +33,29 @@ public class testStreams
 
 		try {
 			ImgPlus<UnsignedShortType> imgP = new ImgPlus<>( testStreams.createFakeImg() );
+			final OutputStream os = new FileOutputStream("/tmp/out.dat");
 
-			final ObjectOutputStream os = new ObjectOutputStream( new FileOutputStream("/tmp/out.dat") );
-			ImgStreamer.packAndSend(imgP, os, new myLogger());
+			ImgStreamer isv = new ImgStreamer( new myLogger() );
+			isv.setImageForStreaming(imgP);
+			System.out.println("stream length will be: "+isv.getOutputStreamLength());
+			isv.write(os);
+
 			os.close();
 
-			final ObjectInputStream is = new ObjectInputStream( new FileInputStream("/tmp/out.dat") );
-			ImgPlus<?> imgPP = ImgStreamer.receiveAndUnpack(is, new myLogger());
-			is.close();
+			final InputStream is = new FileInputStream("/tmp/out.dat");
 
+			ImgPlus<?> imgPP = isv.read(is);
+
+			is.close();
 			System.out.println("got this image: "+imgPP.getImg().toString());
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
 		}
+
 	}
+
 
 	static
 	void testQueingOfObjectsInAStream()
