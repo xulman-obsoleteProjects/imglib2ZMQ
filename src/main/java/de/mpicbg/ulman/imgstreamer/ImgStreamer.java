@@ -10,6 +10,7 @@ package de.mpicbg.ulman.imgstreamer;
 import net.imagej.Dataset;
 import net.imagej.ImgPlus;
 import net.imglib2.img.Img;
+import net.imglib2.img.NativeImg;
 import net.imglib2.img.WrappedImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
@@ -33,96 +34,185 @@ import java.util.StringTokenizer;
 
 public class ImgStreamer
 {
-	// -------- transmission of the image, sockets --------
-	///list of supported voxel types: so far only scalar images are supported
-	static List<Class<? extends NativeType>> SUPPORTED_VOXEL_CLASSES =
-			Arrays.asList(ByteType.class, UnsignedByteType.class, ShortType.class,
-					UnsignedShortType.class, FloatType.class, DoubleType.class);
+	/// list of supported voxel types: so far only scalar images are supported
+	static public final List<Class<? extends NativeType>> SUPPORTED_VOXEL_CLASSES
+		= Arrays.asList(ByteType.class, UnsignedByteType.class, ShortType.class,
+		                UnsignedShortType.class, FloatType.class, DoubleType.class);
 
-
-	public static <T extends NativeType<T>>
-	void packAndSend(final ImgPlus<T> imgP, final ObjectOutputStream os, final ProgressCallback log)
-	throws IOException
+	/// default logger that logs nowhere
+	static public final
+	class EmptyProgressCallback implements ProgressCallback
 	{
-		Class<?> voxelClass = imgP.firstElement().getClass();
+		@Override
+		public void info(String msg) {}
+
+		@Override
+		public void setProgress(float howFar) {}
+	}
+
+	/// currently used logger
+	private
+	final ProgressCallback logger;
+
+	public
+	ImgStreamer(final ProgressCallback _log)
+	{
+		logger = _log == null? new EmptyProgressCallback(): _log;
+	}
+
+
+	// -------- streaming stuff OUT --------
+	//reference on the image to be streamed
+	private Img<? extends NativeType<?>> img;
+
+	//header and metadata (from ImgPlus) corresponding to the image
+	private String headerMsg;
+	private byte[] metadataBytes;
+	private long voxelBytesCount;
+
+
+	public <T extends NativeType<T>>
+	void setImageForStreaming(final ImgPlus<T> imgToBeStreamed)
+	{
+		img = getUnderlyingImg(imgToBeStreamed);
+		if (img.size() == 0)
+			throw new RuntimeException("Refusing to stream an empty image...");
+
+		Class<?> voxelClass = img.firstElement().getClass();
 		if(!SUPPORTED_VOXEL_CLASSES.contains(voxelClass))
 			throw new IllegalArgumentException("Unsupported voxel type, sorry.");
 
-		//"buffer" for the first and human-readable payload:
+		//build the corresponding header:
 		//protocol version
-		String msg = new String("v1");
+		headerMsg = new String("v1");
 
 		//dimensionality data
-		msg += " dimNumber " + imgP.numDimensions();
-		for (int i=0; i < imgP.numDimensions(); ++i)
-			msg += " " + imgP.dimension(i);
+		voxelBytesCount = 1;
+		headerMsg += " dimNumber " + img.numDimensions();
+		for (int i=0; i < img.numDimensions(); ++i)
+		{
+			headerMsg += " " + img.dimension(i);
+			voxelBytesCount *= img.dimension(i);
+		}
 
-		//decipher the voxel type
-		msg += " " + voxelClass.getSimpleName();
+		//decipher the voxel type...
+		headerMsg += " " + voxelClass.getSimpleName();
 
-		//check we can handle the storage model of this image,
-		//and try to send everything (first the human readable payload, then raw voxel data)
-		Img<T> img = getUnderlyingImg(imgP);
-		if (img.size() == 0)
-			throw new RuntimeException("Refusing to send an empty image...");
+		//...and size
+		long pixelSize = 1;
+		final Object sampleArray = ((NativeImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray();
+		if (sampleArray instanceof short[])
+		{
+			pixelSize = 2;
+		}
+		else
+		if (sampleArray instanceof float[])
+		{
+			pixelSize = 4;
+		}
+		else
+		if (sampleArray instanceof double[])
+		{
+			pixelSize = 8;
+		}
+		else
+			throw new RuntimeException("Unsupported voxel storage, sorry.");
+		voxelBytesCount *= pixelSize;
 
+		//check we can handle the storage model of this image
+		//TODO: can't it be done smarter?
 		if (img instanceof ArrayImg)
 		{
-			msg += " ArrayImg ";
-
-			//send header, metadata and voxel data afterwards
-			if (log != null) log.info("sending header: "+msg);
-			os.writeUTF(msg);
-			if (log != null) log.info("sending the image...");
-			//packAndSendPlusData(imgP, socket);
-			packAndSendArrayImg((ArrayImg<T,? extends ArrayDataAccess<?>>)img, os);
+			headerMsg += " ArrayImg ";
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
-			//possibly add additional configuration hints to 'msg'
-			msg += " PlanarImg "; //+((PlanarImg<T,?>)img).numSlices()+" ";
-			//NB: The number of planes is deterministically given by the image size/dimensions.
-			//    Hence, it is not necessary to provide such hint...
-
-			//TODO: if cell image will also need not to add extra header hints,
-			//      we can move the 4 lines before this 3-branches-if
-
-			//send header, metadata and voxel data afterwards
-			if (log != null) log.info("sending header: "+msg);
-			os.writeUTF(msg);
-			if (log != null) log.info("sending the image...");
-			//packAndSendPlusData(imgP, socket);
-			packAndSendPlanarImg((PlanarImg<T,? extends ArrayDataAccess<?>>)img, os);
+			headerMsg += " PlanarImg ";
 		}
 		else
 		if (img instanceof CellImg)
 		{
-			//possibly add additional configuration hints to 'msg'
-			msg += " CellImg ";
-			throw new RuntimeException("Cannot send CellImg images yet.");
-
-			//send header, metadata and voxel data afterwards
-			//if (log != null) log.info("sending header: "+msg);
-			//os.writeUTF(msg);
-			//if (log != null) log.info("sending the image...");
-			//packAndSendPlusData(imgP, socket);
-			//packAndSendCellImg((CellImg<T,?>)img, socket);
+			headerMsg += " CellImg ";
+			throw new RuntimeException("Cannot stream CellImg images yet.");
 		}
 		else
-			throw new RuntimeException("Cannot determine the type of image, cannot send it.");
+			throw new RuntimeException("Cannot determine the type of image, cannot stream it.");
 
-		if (log != null) log.info("sending finished...");
+		//process the metadata....
+		metadataBytes = packAndSendPlusData(imgToBeStreamed);
 	}
 
 
-	public static
-	ImgPlus<?> receiveAndUnpack(final ObjectInputStream is, final ProgressCallback log)
-	throws IOException, ClassNotFoundException
+	public
+	long getOutputStreamLength()
 	{
-		final String header = is.readUTF();
+		return headerMsg.length()+metadataBytes.length+4 + voxelBytesCount;
+	}
 
-		if (log != null) log.info("received header: "+header);
+
+	public
+	void write(final OutputStream os)
+	throws IOException
+	{
+		final DataOutputStream dos = new DataOutputStream(os);
+
+		logger.info("streaming the header: "+headerMsg);
+		dos.writeUTF(headerMsg);
+		if (dos.size() != headerMsg.length()+2)
+		{
+			//System.out.println("dos.size()="+dos.size());
+			throw new RuntimeException("Header size calculation mismatch.");
+		}
+
+		logger.info("streaming the metadata...");
+		dos.writeShort(metadataBytes.length);
+		dos.write(metadataBytes);
+		if (dos.size() != headerMsg.length()+metadataBytes.length+4)
+		{
+			//System.out.println("dos.size()="+dos.size());
+			throw new RuntimeException("Metadata size calculation mismatch.");
+		}
+
+		logger.info("streaming the image data...");
+		StreamFeeder sf = giveMeStreamFeeder((NativeImg)img);
+		if (img instanceof ArrayImg)
+		{
+			packAndSendArrayImg((ArrayImg)img, sf,dos);
+		}
+		else
+		if (img instanceof PlanarImg)
+		{
+			packAndSendPlanarImg((PlanarImg)img, sf,dos);
+		}
+		else
+		if (img instanceof CellImg)
+		{
+			throw new RuntimeException("Cannot stream CellImg images yet.");
+		}
+		else
+			throw new RuntimeException("Unsupported image backend type, sorry.");
+
+		dos.flush();
+		logger.info("streaming finished.");
+	}
+
+
+	public
+	ImgPlus<?> read(final InputStream is)
+	throws IOException
+	{
+		final DataInputStream dis = new DataInputStream(is);
+
+	    //read the header
+		final String header = dis.readUTF();
+
+		//read the metadata
+		final byte[] metadata = new byte[dis.readShort()];
+		dis.read(metadata);
+
+		//process the header
+		logger.info("found header: "+header);
 		StringTokenizer headerST = new StringTokenizer(header, " ");
 		if (! headerST.nextToken().startsWith("v1"))
 			throw new RuntimeException("Unknown protocol, expecting protocol v1.");
@@ -149,103 +239,186 @@ public class ImgStreamer
 		//the core Img is prepared, lets extend it with metadata and fill with voxel values afterwards
 		//create the ImgPlus from it -- there is fortunately no deep coping
 		ImgPlus<?> imgP = new ImgPlus<>(img);
-		//receiveAndUnpackPlusData((ImgPlus)imgP, socket);
+
+		//process the metadata
+		logger.info("processing the incoming metadata...");
+		receiveAndUnpackPlusData(metadata,imgP);
 
 		if (img.size() == 0)
-			throw new RuntimeException("Refusing to receive an empty image...");
-		if (log != null) log.info("receiving the image...");
+			throw new RuntimeException("Refusing to stream an empty image...");
 
-		//populate with voxel data
-		if (backendStr.startsWith("ArrayImg"))
+		logger.info("processing the incoming image data...");
+		StreamFeeder sf = giveMeStreamFeeder((NativeImg)img);
+		if (img instanceof ArrayImg)
 		{
-			receiveAndUnpackArrayImg((ArrayImg)img, is);
+			receiveAndUnpackArrayImg((ArrayImg)img, sf,dis);
 		}
 		else
-		if (backendStr.startsWith("PlanarImg"))
+		if (img instanceof PlanarImg)
 		{
-			if (typeStr.contains("Byte"))
-				receiveAndUnpackPlanarByteImg((PlanarImg)img, is);
-			else
-			if (typeStr.contains("Short"))
-				receiveAndUnpackPlanarShortImg((PlanarImg)img, is);
-			else
-			if (typeStr.contains("Float"))
-				receiveAndUnpackPlanarFloatImg((PlanarImg)img, is);
-			else
-			if (typeStr.contains("Double"))
-				receiveAndUnpackPlanarDoubleImg((PlanarImg)img, is);
-			//else: should not happen, see createVoxelType() above
+			receiveAndUnpackPlanarImg((PlanarImg)img, sf,dis);
 		}
 		else
-		if (backendStr.startsWith("CellImg"))
+		if (img instanceof CellImg)
 		{
-			throw new RuntimeException("Cannot receive CellImg images yet.");
+			throw new RuntimeException("Cannot stream CellImg images yet.");
 		}
 		else
 			throw new RuntimeException("Unsupported image backend type, sorry.");
 
-		if (log != null) log.info("receiving finished...");
+		logger.info("processing finished.");
 		return imgP;
 	}
 
 
 	// -------- support for the transmission of the image metadata --------
+	protected
+	byte[] packAndSendPlusData(final ImgPlus<?> img)
+	{
+		//TODO: process the metadata.... from the img to metadata
+		final byte[] metadata = new byte[] { 98,97,97,97,97,97,97,99 };
+
+		return metadata;
+	}
+
+	protected
+	void receiveAndUnpackPlusData(final byte[] metadata, final ImgPlus<?> img)
+	{
+		//TODO: process the metadata.... from the metadata to img
+		System.out.println("__found metadata: "+(new String(metadata)));
+	}
 
 
 	// -------- support for the transmission of the payload/voxel data --------
+	private interface StreamFeeder
+	{
+		void write(final Object inArray, final DataOutputStream outStream) throws IOException;
+		void  read(final DataInputStream inStream, final Object outArray) throws IOException;
+	}
+
+	private class ByteStreamFeeder implements StreamFeeder
+	{
+		@Override
+		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
+		{
+			outStream.write((byte[])inArray);
+		}
+		@Override
+		public void read(final DataInputStream inStream, final Object outArray) throws IOException
+		{
+			inStream.read((byte[])outArray);
+		}
+	}
+
+	private class ShortStreamFeeder implements StreamFeeder
+	{
+		@Override
+		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
+		{
+			final short[] inShorts = (short[])inArray;
+			for (int i=0; i < inShorts.length; ++i) outStream.writeShort(inShorts[i]);
+		}
+		@Override
+		public void read(final DataInputStream inStream, final Object outArray) throws IOException
+		{
+			final short[] outShorts = (short[])outArray;
+			for (int i=0; i < outShorts.length; ++i) outShorts[i]=inStream.readShort();
+		}
+	}
+
+	private class FloatStreamFeeder implements StreamFeeder
+	{
+		@Override
+		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
+		{
+			final float[] inFloats = (float[])inArray;
+			for (int i=0; i < inFloats.length; ++i) outStream.writeFloat(inFloats[i]);
+		}
+		@Override
+		public void read(final DataInputStream inStream, final Object outArray) throws IOException
+		{
+			final float[] outFloats = (float[])outArray;
+			for (int i=0; i < outFloats.length; ++i) outFloats[i]=inStream.readFloat();
+		}
+	}
+
+	private class DoubleStreamFeeder implements StreamFeeder
+	{
+		@Override
+		public void write(final Object inArray, final DataOutputStream outStream) throws IOException
+		{
+			final double[] inDoubles = (double[])inArray;
+			for (int i=0; i < inDoubles.length; ++i) outStream.writeDouble(inDoubles[i]);
+		}
+		@Override
+		public void read(final DataInputStream inStream, final Object outArray) throws IOException
+		{
+			final double[] outDoubles = (double[])outArray;
+			for (int i=0; i < outDoubles.length; ++i) outDoubles[i]=inStream.readDouble();
+		}
+	}
+
+	protected
+	StreamFeeder giveMeStreamFeeder(final NativeImg<?,? extends ArrayDataAccess<?>> img)
+	{
+		final Object sampleArray = img.update(null).getCurrentStorageArray();
+		if (sampleArray instanceof byte[])
+		{
+			return new ByteStreamFeeder();
+		}
+		else
+		if (sampleArray instanceof short[])
+		{
+			return new ShortStreamFeeder();
+		}
+		else
+		if (sampleArray instanceof float[])
+		{
+			return new FloatStreamFeeder();
+		}
+		else
+		if (sampleArray instanceof double[])
+		{
+			return new DoubleStreamFeeder();
+		}
+		else
+			throw new RuntimeException("Unsupported voxel storage, sorry.");
+	}
+
+
 	protected static <T extends NativeType<T>>
-	void packAndSendArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img, final ObjectOutputStream os)
+	void packAndSendArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
+	                         final StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
-		os.writeObject( img.update(null).getCurrentStorageArray() );
+		sf.write(img.update(null).getCurrentStorageArray(), os);
 	}
 
 	protected static <T extends NativeType<T>>
-	void receiveAndUnpackArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img, final ObjectInputStream is)
-	throws IOException, ClassNotFoundException
+	void receiveAndUnpackArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
+	                              final StreamFeeder sf, final DataInputStream is)
+	throws IOException
 	{
-		img.update( is.readObject() );
+		sf.read(is, img.update(null).getCurrentStorageArray());
 	}
 
 
 	protected static
-	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img, final ObjectOutputStream os)
+	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img,
+	                          final StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
-			os.writeObject( img.getPlane(slice).getCurrentStorageArray() );
+			sf.write(img.getPlane(slice).getCurrentStorageArray(),os);
 	}
 
 	protected static
-	void receiveAndUnpackPlanarByteImg(final PlanarImg<? extends NativeType<?>,ByteArray> img, final ObjectInputStream is)
-			throws IOException, ClassNotFoundException
+	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,ByteArray> img,
+	                               final StreamFeeder sf, final DataInputStream is)
+	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
-			img.setPlane( slice, new ByteArray( (byte[])is.readObject() ) );
-	}
-
-	protected static
-	void receiveAndUnpackPlanarShortImg(final PlanarImg<? extends NativeType<?>,ShortArray> img, final ObjectInputStream is)
-	throws IOException, ClassNotFoundException
-	{
-		for (int slice = 0; slice < img.numSlices(); ++slice)
-			img.setPlane( slice, new ShortArray( (short[])is.readObject() ) );
-	}
-
-	protected static
-	void receiveAndUnpackPlanarFloatImg(final PlanarImg<? extends NativeType<?>,FloatArray> img, final ObjectInputStream is)
-	throws IOException, ClassNotFoundException
-	{
-		for (int slice = 0; slice < img.numSlices(); ++slice)
-			img.setPlane( slice, new FloatArray( (float[])is.readObject() ) );
-	}
-
-	protected static
-	void receiveAndUnpackPlanarDoubleImg(final PlanarImg<? extends NativeType<?>,DoubleArray> img, final ObjectInputStream is)
-	throws IOException, ClassNotFoundException
-	{
-		for (int slice = 0; slice < img.numSlices(); ++slice)
-			img.setPlane( slice, new DoubleArray( (double[])is.readObject() ) );
+			sf.read(is, img.getPlane(slice).getCurrentStorageArray());
 	}
 
 
