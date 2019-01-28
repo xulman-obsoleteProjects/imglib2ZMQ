@@ -317,16 +317,16 @@ public class ImgStreamer
 
 
 	// -------- support for the transmission of the payload/voxel data --------
-	protected static <T extends NativeType<T>>
-	void packAndSendArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
+	protected static
+	void packAndSendArrayImg(final ArrayImg<?,? extends ArrayDataAccess<?>> img,
 	                         final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
 		sf.write(img.update(null).getCurrentStorageArray(), os);
 	}
 
-	protected static <T extends NativeType<T>>
-	void receiveAndUnpackArrayImg(final ArrayImg<T,? extends ArrayDataAccess<?>> img,
+	protected static
+	void receiveAndUnpackArrayImg(final ArrayImg<?,? extends ArrayDataAccess<?>> img,
 	                              final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
@@ -344,8 +344,8 @@ public class ImgStreamer
 	}
 
 	protected static
-	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,ByteArray> img,
-								   final StreamFeeders.StreamFeeder sf, final DataInputStream is)
+	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img,
+	                               final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
 		for (int slice = 0; slice < img.numSlices(); ++slice)
