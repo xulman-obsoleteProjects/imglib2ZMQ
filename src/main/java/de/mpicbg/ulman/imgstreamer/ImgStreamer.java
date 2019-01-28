@@ -112,26 +112,27 @@ public class ImgStreamer
 		if (img instanceof ArrayImg)
 		{
 			headerMsg += " ArrayImg ";
-			sampleArray = ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray();
+			sampleArray = ((ArrayImg<?,A>)img).update(null).getCurrentStorageArray();
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
 			headerMsg += " PlanarImg ";
-			sampleArray = ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray();
+			sampleArray = ((PlanarImg<?,A>)img).getPlane(0).getCurrentStorageArray();
 		}
 		else
 		//if (img instanceof CellImg || img instanceof LazyCellImg)
 		if (img instanceof AbstractCellImg)
 		{
-			headerMsg += " CellImg ";
-			//  CellImg<>   extends AbstractCellImg<T, A, Cell<A>, ListImg<Cell<A>>>
+			//DiskCachedCellImg<> and SCIFIOCellImg<> extends (besides other) LazyCellImg<>
 			//LazyCellImg<> extends AbstractCellImg<T, A, Cell<A>, LazyCellImg.LazyCells<Cell<A>>>
+			//  CellImg<>   extends AbstractCellImg<T, A, Cell<A>, ListImg<Cell<A>>>
 			//both ListImg<C> and LazyCellImg.LazyCells<C> extends AbstractImg<C>
 			final AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>> cellImg
 			   = (AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>>)img;
 
 			//export also the internal configuration of tiles (that make up this image)
+			headerMsg += " CellImg ";
 			for (int i=0; i < cellImg.numDimensions(); ++i)
 				headerMsg += cellImg.getCellGrid().cellDimension(i) + " ";
 
@@ -203,14 +204,14 @@ public class ImgStreamer
 		if (img instanceof ArrayImg)
 		{
 			packAndSendArrayImg((ArrayImg)img,
-				createStreamFeeder( ((ArrayImg<?,? extends ArrayDataAccess<?>>)img).update(null).getCurrentStorageArray() ),
+				createStreamFeeder( ((ArrayImg<?,A>)img).update(null).getCurrentStorageArray() ),
 				dos);
 		}
 		else
 		if (img instanceof PlanarImg)
 		{
 			packAndSendPlanarImg((PlanarImg)img,
-				createStreamFeeder( ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray() ),
+				createStreamFeeder( ((PlanarImg<?,A>)img).getPlane(0).getCurrentStorageArray() ),
 				dos);
 		}
 		else
@@ -356,7 +357,7 @@ public class ImgStreamer
 
 
 	protected static <A extends ArrayDataAccess<A>>
-	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,A> img,
+	void packAndSendPlanarImg(final PlanarImg<?,A> img,
 	                          final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
@@ -365,7 +366,7 @@ public class ImgStreamer
 	}
 
 	protected static <A extends ArrayDataAccess<A>>
-	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,A> img,
+	void receiveAndUnpackPlanarImg(final PlanarImg<?,A> img,
 	                               final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
