@@ -13,18 +13,20 @@ import net.imglib2.img.Img;
 import net.imglib2.img.WrappedImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
-import net.imglib2.img.basictypeaccess.array.*;
-import net.imglib2.img.cell.CellImg;
-import net.imglib2.img.cell.CellImgFactory;
 import net.imglib2.img.planar.PlanarImg;
 import net.imglib2.img.planar.PlanarImgFactory;
+import net.imglib2.img.cell.Cell;
+import net.imglib2.img.cell.CellImg;
+import net.imglib2.img.cell.CellImgFactory;
+import net.imglib2.img.list.ListCursor;
+import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.integer.ByteType;
-import net.imglib2.type.numeric.integer.ShortType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.integer.ShortType;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
-import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.type.numeric.real.DoubleType;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -120,8 +122,13 @@ public class ImgStreamer
 		if (img instanceof CellImg)
 		{
 			headerMsg += " CellImg ";
-			sampleArray = ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray();
-			throw new RuntimeException("Cannot stream CellImg images yet.");
+			final CellImg<?,? extends ArrayDataAccess<?>> cellImg = (CellImg<?,? extends ArrayDataAccess<?>>)img;
+
+			//export also the internal configuration of tiles (that make up this image)
+			for (int i=0; i < cellImg.numDimensions(); ++i)
+				headerMsg += cellImg.getCellGrid().cellDimension(i) + " ";
+
+			sampleArray = cellImg.getCells().firstElement().getData().getCurrentStorageArray();
 		}
 		else
 			throw new RuntimeException("Cannot determine the type of image, cannot stream it.");
@@ -202,12 +209,9 @@ public class ImgStreamer
 		else
 		if (img instanceof CellImg)
 		{
-			throw new RuntimeException("Cannot stream CellImg images yet.");
-			/*
 			packAndSendCellImg((CellImg)img,
 				createStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
 				dos);
-			*/
 		}
 		else
 			throw new RuntimeException("Unsupported image backend type, sorry.");
@@ -248,9 +252,19 @@ public class ImgStreamer
 		final String typeStr = headerST.nextToken();
 		final String backendStr = headerST.nextToken();
 
+		//if CellImg is stored in the stream, unveil also its tile (cells) configuration
+		int[] cellDims = null;
+		if (backendStr.startsWith("CellImg"))
+		{
+			//parse out also the cellDims configuration
+			cellDims = new int[n];
+			for (int i=0; i < n; ++i)
+				cellDims[i] = Integer.valueOf(headerST.nextToken());
+		}
+
 		//envelope/header message is (mostly) parsed,
 		//start creating the output image of the appropriate type
-		Img<? extends NativeType<?>> img = createImg(dims, backendStr, createVoxelType(typeStr));
+		Img<? extends NativeType<?>> img = createImg(dims, backendStr, createVoxelType(typeStr), cellDims);
 
 		if (img == null)
 			throw new RuntimeException("Unsupported image backend type, sorry.");
@@ -283,12 +297,9 @@ public class ImgStreamer
 		else
 		if (img instanceof CellImg)
 		{
-			throw new RuntimeException("Cannot stream CellImg images yet.");
-			/*
 			receiveAndUnpackCellImg((CellImg)img,
 				createStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
 				dis);
-			*/
 		}
 		else
 			throw new RuntimeException("Unsupported image backend type, sorry.");
@@ -353,6 +364,27 @@ public class ImgStreamer
 	}
 
 
+	protected static <A extends ArrayDataAccess<A>>
+	void packAndSendCellImg(final CellImg<? extends NativeType<?>,A> img,
+	                        final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
+	throws IOException
+	{
+		ListCursor<Cell<A>> cell = img.getCells().cursor();
+		while (cell.hasNext())
+			sf.write(cell.next().getData().getCurrentStorageArray(), os);
+	}
+
+	protected static <A extends ArrayDataAccess<A>>
+	void receiveAndUnpackCellImg(final CellImg<? extends NativeType<?>,A> img,
+	                             final StreamFeeders.StreamFeeder sf, final DataInputStream is)
+	throws IOException
+	{
+		ListCursor<Cell<A>> cell = img.getCells().cursor();
+		while (cell.hasNext())
+			sf.read(is, cell.next().getData().getCurrentStorageArray());
+	}
+
+
 	// -------- the types war --------
 	/*
 	 * Keeps unwrapping the input image \e img
@@ -385,14 +417,14 @@ public class ImgStreamer
 	}
 
 	private static <T extends NativeType<T>>
-	Img<T> createImg(int[] dims, String backendStr, T type)
+	Img<T> createImg(int[] dims, String backendStr, T type, int... cellDims)
 	{
 		if (backendStr.startsWith("ArrayImg"))
-			return new ArrayImgFactory<T>().create(dims, type);
+            return new ArrayImgFactory<>(type).create(dims);
 		if (backendStr.startsWith("PlanarImg"))
-			return new PlanarImgFactory<T>().create(dims, type);
+            return new PlanarImgFactory<>(type).create(dims);
 		if (backendStr.startsWith("CellImg"))
-			return new CellImgFactory<T>().create(dims, type);
+			return new CellImgFactory<>(type,cellDims).create(dims);
 		throw new RuntimeException("Unsupported image backend type, sorry.");
 	}
 }
