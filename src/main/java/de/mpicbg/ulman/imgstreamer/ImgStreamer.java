@@ -9,16 +9,18 @@ package de.mpicbg.ulman.imgstreamer;
 
 import net.imagej.Dataset;
 import net.imagej.ImgPlus;
+import net.imglib2.Cursor;
 import net.imglib2.img.Img;
+import net.imglib2.img.AbstractImg;
 import net.imglib2.img.WrappedImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
-import net.imglib2.img.planar.PlanarImg;
-import net.imglib2.img.planar.PlanarImgFactory;
+import net.imglib2.img.cell.AbstractCellImg;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellImg;
 import net.imglib2.img.cell.CellImgFactory;
-import net.imglib2.img.list.ListCursor;
+import net.imglib2.img.planar.PlanarImg;
+import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.integer.ByteType;
@@ -77,7 +79,7 @@ public class ImgStreamer
 	private byte[] metadataBytes;
 	private long voxelBytesCount;
 
-	public <T extends NativeType<T>>
+	public <T extends NativeType<T>, A extends ArrayDataAccess<A>>
 	void setImageForStreaming(final ImgPlus<T> imgToBeStreamed)
 	{
 		img = getUnderlyingImg(imgToBeStreamed);
@@ -119,10 +121,15 @@ public class ImgStreamer
 			sampleArray = ((PlanarImg<?,? extends ArrayDataAccess<?>>)img).getPlane(0).getCurrentStorageArray();
 		}
 		else
-		if (img instanceof CellImg)
+		//if (img instanceof CellImg || img instanceof LazyCellImg)
+		if (img instanceof AbstractCellImg)
 		{
 			headerMsg += " CellImg ";
-			final CellImg<?,? extends ArrayDataAccess<?>> cellImg = (CellImg<?,? extends ArrayDataAccess<?>>)img;
+			//  CellImg<>   extends AbstractCellImg<T, A, Cell<A>, ListImg<Cell<A>>>
+			//LazyCellImg<> extends AbstractCellImg<T, A, Cell<A>, LazyCellImg.LazyCells<Cell<A>>>
+			//both ListImg<C> and LazyCellImg.LazyCells<C> extends AbstractImg<C>
+			final AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>> cellImg
+			   = (AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>>)img;
 
 			//export also the internal configuration of tiles (that make up this image)
 			for (int i=0; i < cellImg.numDimensions(); ++i)
@@ -169,7 +176,7 @@ public class ImgStreamer
 	}
 
 
-	public
+	public <A extends ArrayDataAccess<A>>
 	void write(final OutputStream os)
 	throws IOException
 	{
@@ -207,10 +214,13 @@ public class ImgStreamer
 				dos);
 		}
 		else
-		if (img instanceof CellImg)
+		if (img instanceof AbstractCellImg)
 		{
-			packAndSendCellImg((CellImg)img,
-				createStreamFeeder( ((CellImg<?,? extends ArrayDataAccess<?>>)img).getCells().firstElement().getData().getCurrentStorageArray() ),
+			final AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>> cellImg
+			   = (AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>>)img;
+
+			packAndSendCellImg(cellImg,
+				createStreamFeeder( cellImg.getCells().firstElement().getData().getCurrentStorageArray() ),
 				dos);
 		}
 		else
@@ -328,16 +338,16 @@ public class ImgStreamer
 
 
 	// -------- support for the transmission of the payload/voxel data --------
-	protected static
-	void packAndSendArrayImg(final ArrayImg<?,? extends ArrayDataAccess<?>> img,
+	protected static <A extends ArrayDataAccess<A>>
+	void packAndSendArrayImg(final ArrayImg<?,A> img,
 	                         final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
 		sf.write(img.update(null).getCurrentStorageArray(), os);
 	}
 
-	protected static
-	void receiveAndUnpackArrayImg(final ArrayImg<?,? extends ArrayDataAccess<?>> img,
+	protected static <A extends ArrayDataAccess<A>>
+	void receiveAndUnpackArrayImg(final ArrayImg<?,A> img,
 	                              final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
@@ -345,8 +355,8 @@ public class ImgStreamer
 	}
 
 
-	protected static
-	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img,
+	protected static <A extends ArrayDataAccess<A>>
+	void packAndSendPlanarImg(final PlanarImg<? extends NativeType<?>,A> img,
 	                          final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
@@ -354,8 +364,8 @@ public class ImgStreamer
 			sf.write(img.getPlane(slice).getCurrentStorageArray(), os);
 	}
 
-	protected static
-	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,? extends ArrayDataAccess<?>> img,
+	protected static <A extends ArrayDataAccess<A>>
+	void receiveAndUnpackPlanarImg(final PlanarImg<? extends NativeType<?>,A> img,
 	                               final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
@@ -365,21 +375,21 @@ public class ImgStreamer
 
 
 	protected static <A extends ArrayDataAccess<A>>
-	void packAndSendCellImg(final CellImg<? extends NativeType<?>,A> img,
+	void packAndSendCellImg(final AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>> img,
 	                        final StreamFeeders.StreamFeeder sf, final DataOutputStream os)
 	throws IOException
 	{
-		ListCursor<Cell<A>> cell = img.getCells().cursor();
+		Cursor<Cell<A>> cell = img.getCells().cursor();
 		while (cell.hasNext())
 			sf.write(cell.next().getData().getCurrentStorageArray(), os);
 	}
 
 	protected static <A extends ArrayDataAccess<A>>
-	void receiveAndUnpackCellImg(final CellImg<? extends NativeType<?>,A> img,
+	void receiveAndUnpackCellImg(final AbstractCellImg<?,A, Cell<A>, ? extends AbstractImg<Cell<A>>> img,
 	                             final StreamFeeders.StreamFeeder sf, final DataInputStream is)
 	throws IOException
 	{
-		ListCursor<Cell<A>> cell = img.getCells().cursor();
+		Cursor<Cell<A>> cell = img.getCells().cursor();
 		while (cell.hasNext())
 			sf.read(is, cell.next().getData().getCurrentStorageArray());
 	}
