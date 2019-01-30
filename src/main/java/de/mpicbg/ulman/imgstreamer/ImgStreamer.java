@@ -21,6 +21,7 @@ import net.imglib2.img.cell.CellImgFactory;
 import net.imglib2.img.list.ListCursor;
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
 import net.imglib2.type.NativeType;
+import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.ByteType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
 import net.imglib2.type.numeric.integer.ShortType;
@@ -220,6 +221,14 @@ public class ImgStreamer
 		logger.info("streaming finished.");
 	}
 
+	public
+	ImgPlus<? extends RealType<?>> readAsRealTypedImg(final InputStream is)
+	throws IOException
+	{
+		// this is a hack but we can afford it because the this.SUPPORTED_VOXEL_CLASSES
+		// contains only RealType-extensible voxel types
+		return (ImgPlus)read(is);
+	}
 
 	public
 	ImgPlus<?> read(final InputStream is)
