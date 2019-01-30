@@ -17,21 +17,31 @@ public class testStreams
 	public static void main(String... args)
 	{
 		//testQueingOfObjectsInAStream();
-		testImgPlus( fillImg(
-			new ArrayImgFactory<>(new UnsignedShortType()).create(200,100,5)
-		));
 
-		testImgPlus( fillImg(
-			new PlanarImgFactory<>(new UnsignedShortType()).create(200,100,5)
-		));
+		for(Class<? extends NativeType> aClass : ImgStreamer.SUPPORTED_VOXEL_CLASSES)
+		{
+			try {
+				NativeType<?> type = aClass.newInstance();
 
-		testImgPlus( fillImg(
-				new CellImgFactory<>(new UnsignedShortType(), 50,20,5).create(200,100,5)
-		));
+				testImgPlus( fillImg(
+						new ArrayImgFactory(type).create(200,100,5)
+				));
+
+				testImgPlus( fillImg(
+						new PlanarImgFactory(type).create(200,100,5)
+				));
+
+				testImgPlus( fillImg(
+						new CellImgFactory(type, 50,20,5).create(200,100,5)
+				));
+			} catch (InstantiationException | IllegalAccessException e) {
+				throw new RuntimeException(e);
+			}
+		}
 	}
 
 
-	static <T extends NativeType<T>>
+	static <T extends RealType<T> & NativeType<T>>
 	void testImgPlus(final Img<T> img)
 	{
 		class myLogger implements ProgressCallback
@@ -55,7 +65,8 @@ public class testStreams
 			//
 			//ImgStreamer must always be instantiated if you want to know the complete
 			//stream size before the actual serialization into an OutputStream
-			ImgStreamer isv = new ImgStreamer( new myLogger() );
+			//ImgStreamer isv = new ImgStreamer( new myLogger() );
+			ImgStreamer isv = new ImgStreamer( null );
 			isv.setImageForStreaming(imgP);
 			System.out.println("stream length will be: "+isv.getOutputStreamLength());
 			isv.write(os);
@@ -65,11 +76,21 @@ public class testStreams
 			//sample input stream
 			final InputStream is = new FileInputStream("/tmp/out.dat");
 			//
-            //ImgStreamer needs not be instantiated to obtain an img from a stream
-			ImgPlus<?> imgPP = isv.read(is);
+			ImgPlus<? extends RealType<?>> imgPP = isv.readAsRealTypedImg(is);
 			//
 			is.close();
-			System.out.println("got this image: "+imgPP.getImg().toString());
+			System.out.println("got this image: "+imgPP.getImg().toString()
+			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
+
+			Cursor<T> cP = imgP.getImg().cursor();
+			cP.jumpFwd(50);
+
+			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
+			cPP.jumpFwd(50);
+
+			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
+				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
