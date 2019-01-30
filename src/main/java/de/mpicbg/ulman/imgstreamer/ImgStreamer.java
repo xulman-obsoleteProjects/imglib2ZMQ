@@ -232,6 +232,8 @@ public class ImgStreamer
 		logger.info("streaming finished.");
 	}
 
+
+	// -------- streaming stuff IN --------
 	public
 	ImgPlus<? extends RealType<?>> readAsRealTypedImg(final InputStream is)
 	throws IOException
@@ -343,7 +345,7 @@ public class ImgStreamer
 	void receiveAndUnpackPlusData(final byte[] metadata, final ImgPlus<?> img)
 	{
 		//TODO: process the metadata.... from the metadata to img
-		System.out.println("__found metadata: "+(new String(metadata)));
+		//System.out.println("__found metadata: "+(new String(metadata)));
 	}
 
 
