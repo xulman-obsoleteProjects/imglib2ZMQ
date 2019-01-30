@@ -31,7 +31,7 @@ public class testStreams
 	}
 
 
-	static <T extends RealType<T>>
+	static <T extends NativeType<T>>
 	void testImgPlus(final Img<T> img)
 	{
 		class myLogger implements ProgressCallback

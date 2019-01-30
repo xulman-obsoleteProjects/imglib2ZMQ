@@ -7,38 +7,37 @@
  */
 package de.mpicbg.ulman.imgstreamer;
 
-import static de.mpicbg.ulman.imgstreamer.StreamFeeders.createStreamFeeder;
-
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.Arrays;
-import java.util.List;
-import java.util.StringTokenizer;
-
 import net.imagej.Dataset;
 import net.imagej.ImgPlus;
 import net.imglib2.img.Img;
 import net.imglib2.img.WrappedImg;
 import net.imglib2.img.array.ArrayImg;
 import net.imglib2.img.array.ArrayImgFactory;
-import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
+import net.imglib2.img.planar.PlanarImg;
+import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.cell.Cell;
 import net.imglib2.img.cell.CellImg;
 import net.imglib2.img.cell.CellImgFactory;
 import net.imglib2.img.list.ListCursor;
-import net.imglib2.img.planar.PlanarImg;
-import net.imglib2.img.planar.PlanarImgFactory;
+import net.imglib2.img.basictypeaccess.array.ArrayDataAccess;
 import net.imglib2.type.NativeType;
-import net.imglib2.type.numeric.RealType;
 import net.imglib2.type.numeric.integer.ByteType;
-import net.imglib2.type.numeric.integer.ShortType;
 import net.imglib2.type.numeric.integer.UnsignedByteType;
+import net.imglib2.type.numeric.integer.ShortType;
 import net.imglib2.type.numeric.integer.UnsignedShortType;
-import net.imglib2.type.numeric.real.DoubleType;
 import net.imglib2.type.numeric.real.FloatType;
+import net.imglib2.type.numeric.real.DoubleType;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.StringTokenizer;
+
+import static de.mpicbg.ulman.imgstreamer.StreamFeeders.createStreamFeeder;
 
 public class ImgStreamer
 {
@@ -71,14 +70,15 @@ public class ImgStreamer
 
 	// -------- streaming stuff OUT --------
 	//reference on the image to be streamed
-	private Img<? extends RealType<?>> img;
+	private Img<? extends NativeType<?>> img;
 
 	//header and metadata (from ImgPlus) corresponding to the image
 	private String headerMsg;
 	private byte[] metadataBytes;
 	private long voxelBytesCount;
 
-	public void setImageForStreaming(final ImgPlus<? extends RealType<?>> imgToBeStreamed)
+	public <T extends NativeType<T>>
+	void setImageForStreaming(final ImgPlus<T> imgToBeStreamed)
 	{
 		img = getUnderlyingImg(imgToBeStreamed);
 		if (img.size() == 0)
@@ -222,7 +222,7 @@ public class ImgStreamer
 
 
 	public
-	ImgPlus<? extends RealType<?>> read(final InputStream is)
+	ImgPlus<?> read(final InputStream is)
 	throws IOException
 	{
 		final DataInputStream dis = new DataInputStream(is);
@@ -264,14 +264,14 @@ public class ImgStreamer
 
 		//envelope/header message is (mostly) parsed,
 		//start creating the output image of the appropriate type
-		Img<? extends RealType<?>> img = createImg(dims, backendStr, createVoxelType(typeStr), cellDims);
+		Img<? extends NativeType<?>> img = createImg(dims, backendStr, createVoxelType(typeStr), cellDims);
 
 		if (img == null)
 			throw new RuntimeException("Unsupported image backend type, sorry.");
 
 		//the core Img is prepared, lets extend it with metadata and fill with voxel values afterwards
 		//create the ImgPlus from it -- there is fortunately no deep coping
-		ImgPlus<? extends RealType<?>> imgP = new ImgPlus<>(img);
+		ImgPlus<?> imgP = new ImgPlus<>(img);
 
 		//process the metadata
 		logger.info("processing the incoming metadata...");
