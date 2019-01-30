@@ -31,7 +31,7 @@ public class StreamFeeders
 		@Override
 		public void read(final DataInputStream inStream, final Object outArray) throws IOException
 		{
-			inStream.read((byte[])outArray);
+			inStream.readFully((byte[])outArray);
 		}
 	}
 
