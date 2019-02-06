@@ -58,23 +58,98 @@ public class ZeroMQInputStream extends InputStream
 		return lim-pos;
 	}
 
+	/** inits this InputStream by binding to a local port */
+	public
+	ZeroMQInputStream(final int portNo)
+	throws IOException
+	{
+		initSocketWithBind(portNo);
+	}
+
+	/** inits this InputStream by binding to a local port */
+	public
+	ZeroMQInputStream(final int portNo, final int timeOut)
+	throws IOException
+	{
+		waitTimeOut = timeOut;
+		initSocketWithBind(portNo);
+	}
+
+	/** inits this InputStream by connecting to given URL */
+	public
+	ZeroMQInputStream(final String URL)
+	throws IOException
+	{
+		initSocketWithConnect(URL);
+	}
+
+	/** inits this InputStream by connecting to given URL */
+	public
+	ZeroMQInputStream(final String URL, final int timeOut)
+	throws IOException
+	{
+		waitTimeOut = timeOut;
+		initSocketWithConnect(URL);
+	}
+
+	/** request to close the socket */
+	public
+	void close()
+	{
+		zmqSocket.close();
+	}
+
 	// -------------- ZMQ stuff --------------
 	/** period of time (in seconds) to wait for next ZMQ message */
 	public int waitTimeOut = 120;
 
 	//init the communication side
-	//ZMQ.Context zmqContext = ZMQ.context(1);
-	//ZMQ.Socket writerSocket = null;
+	ZMQ.Context zmqContext = ZMQ.context(1);
+	ZMQ.Socket zmqSocket = null;
+
+	private
+	void initSocketWithBind(final int portNo)
+	throws IOException
+	{
+		try {
+			zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			zmqSocket.bind("tcp://*:" + portNo);
+		}
+		catch (ZMQException e) {
+			throw new IOException("network error: " + e.getMessage());
+		}
+		catch (Exception e) {
+			throw new IOException("other error: " + e.getMessage());
+		}
+	}
+
+	private
+	void initSocketWithConnect(final String URL)
+	throws IOException
+	{
+		try {
+			zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			zmqSocket.connect(URL);
+		}
+		catch (ZMQException e) {
+			throw new IOException("network error: " + e.getMessage());
+		}
+		catch (Exception e) {
+			throw new IOException("other error: " + e.getMessage());
+		}
+	}
 
 	/** reads the ZMQ message into our own buffer, but only if
 	 *  there is enough capacity to store the incoming message */
 	private
 	void readZMQ()
+	throws IOException
 	{
-		//add 10 more fake values into the buffer
-		int p=lim;
-		for (; p < lim+10 && p < 40; ++p) buf[p] = (byte)p;
-		lim = p;
+		//TODO: if message available is larger than buf.length, increase buf or fail
+		lim = zmqSocket.recv(buf,0,buf.length,0);
+		if (lim == -1)
+		    throw new IOException("network reading error");
+		pos = 0;
 	}
 
 	/** non-blocking pooling of ZMQ message queue,
@@ -82,9 +157,6 @@ public class ZeroMQInputStream extends InputStream
 	private
 	boolean isZMQready()
 	{
-		if (lim < 40)
-			return true;
-		else
-			return false;
+		return ( (zmqSocket.getEvents() & ZMQ.EVENT_CONNECTED) == ZMQ.EVENT_CONNECTED );
 	}
 }
