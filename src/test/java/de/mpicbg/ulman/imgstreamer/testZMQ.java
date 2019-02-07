@@ -1,19 +1,34 @@
 package de.mpicbg.ulman.imgstreamer;
 
 import java.io.*;
+
+import net.imagej.ImgPlus;
+import net.imglib2.Cursor;
+import net.imglib2.img.Img;
+import net.imglib2.img.array.ArrayImgFactory;
+import net.imglib2.type.NativeType;
+import net.imglib2.type.numeric.RealType;
+import net.imglib2.type.numeric.integer.UnsignedShortType;
 import org.zeromq.ZMQ;
-import org.zeromq.ZMQException;
+
+import static de.mpicbg.ulman.imgstreamer.testStreams.fillImg;
 
 public class testZMQ
 {
 	public static void main(String... args)
 	{
+		/*
 		System.out.println("-------------------------------------------------");
 		testNonBufferedReadOut();
 
 		System.out.println("-------------------------------------------------");
 		testBufferedReadOut();
+		*/
+
+		System.out.println("-------------------------------------------------");
+		testByteArray2ImageTransfer(new UnsignedShortType());
 	}
+
 
 	public static void testNonBufferedReadOut()
 	{
@@ -46,6 +61,7 @@ public class testZMQ
 			e.printStackTrace();
 		}
 	}
+
 
 	public static void testBufferedReadOut()
 	{
@@ -82,6 +98,50 @@ public class testZMQ
 
 			zmqSocket.close();
 			zis.close();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+
+	static <T extends RealType<T> & NativeType<T>>
+	void testByteArray2ImageTransfer(final T type)
+	{
+		Img<T> img
+			= fillImg( new ArrayImgFactory(type).create(200,100,5) );
+
+		try {
+			//stream out a real image into a byte[]
+			final ImgPlus<T> imgP = new ImgPlus<>(img);
+			final ByteArrayOutputStream os = new ByteArrayOutputStream();
+			ImgStreamer isv = new ImgStreamer( new testStreams.myLogger() );
+			isv.setImageForStreaming(imgP);
+			System.out.println("stream length will be: "+isv.getOutputStreamLength());
+			isv.write(os);
+
+			ZMQ.Context zmqContext = ZMQ.context(1);
+			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			zmqSocket.connect("tcp://localhost:3456");
+			zmqSocket.send(os.toByteArray());
+
+			final ZeroMQInputStream zis = new ZeroMQInputStream(3456, 10);
+			ImgPlus<? extends RealType<?>> imgPP = isv.readAsRealTypedImg(zis);
+
+			zmqSocket.close();
+			zis.close();
+
+			System.out.println("got this image: "+imgPP.getImg().toString()
+			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
+
+			Cursor<T> cP = imgP.getImg().cursor();
+			cP.jumpFwd(50);
+
+			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
+			cPP.jumpFwd(50);
+
+			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
+				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
 		}
 		catch (IOException e) {
 			e.printStackTrace();
