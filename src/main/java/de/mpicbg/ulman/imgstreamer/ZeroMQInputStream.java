@@ -9,7 +9,7 @@ import java.io.InputStream;
 public class ZeroMQInputStream extends InputStream
 {
 	// -------------- buffering stuff --------------
-	private final byte[] buf = new byte[1024000];
+	private byte[] buf = null;
 	private int pos = 0;
 	private int lim = 0;
 
@@ -139,16 +139,17 @@ public class ZeroMQInputStream extends InputStream
 		}
 	}
 
-	/** reads the ZMQ message into our own buffer, but only if
-	 *  there is enough capacity to store the incoming message */
+	/** reads the ZMQ message into the buffer, assuming that the content
+	 *  of the current buffer has been completely read out (because this
+	 *  method will "overwrite" it) */
 	private
 	void readZMQ()
 	throws IOException
 	{
-		//TODO: if message available is larger than buf.length, increase buf or fail
-		lim = zmqSocket.recv(buf,0,buf.length,0);
-		if (lim == -1)
+		buf = zmqSocket.recv();
+		if (buf == null)
 		    throw new IOException("network reading error");
+		lim = buf.length;
 		pos = 0;
 	}
 

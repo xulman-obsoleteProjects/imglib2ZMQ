@@ -13,7 +13,7 @@ public class testZMQ
 			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
 			zmqSocket.connect("tcp://localhost:3456");
 
-			byte[] testSendArray = new byte[] { 97,98,99,100,97,98,99,100,97,98,99,127 };
+			byte[] testSendArray = new byte[] { 97,120,98,99,100,97,98,99,100,97,98,99 };
 			zmqSocket.send(testSendArray);
 
 			final ZeroMQInputStream zis = new ZeroMQInputStream(3456, 5);
@@ -22,7 +22,7 @@ public class testZMQ
 				nextVal = zis.read();
 				System.out.println("got now this value: "+nextVal);
 
-				if (nextVal == 127)
+				if (nextVal == 120)
 				{
 					//modify the buffer to recognize it...
 					for (int i=0; i < testSendArray.length; ++i) testSendArray[i]+=4;
