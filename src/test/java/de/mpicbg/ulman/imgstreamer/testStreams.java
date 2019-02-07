@@ -10,7 +10,6 @@ import net.imglib2.img.planar.PlanarImgFactory;
 import net.imglib2.img.cell.CellImgFactory;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.RealType;
-import net.imglib2.type.numeric.integer.UnsignedShortType;
 
 public class testStreams
 {
@@ -41,21 +40,21 @@ public class testStreams
 	}
 
 
+	static class myLogger implements ProgressCallback
+	{
+		@Override
+		public void info(String msg) {
+			System.out.println(msg);
+		}
+		@Override
+		public void setProgress(float howFar) {
+			System.out.println("progress: "+howFar);
+		}
+	}
+
 	static <T extends RealType<T> & NativeType<T>>
 	void testImgPlus(final Img<T> img)
 	{
-		class myLogger implements ProgressCallback
-		{
-			@Override
-			public void info(String msg) {
-				System.out.println(msg);
-			}
-			@Override
-			public void setProgress(float howFar) {
-				System.out.println("progress: "+howFar);
-			}
-		}
-
 		try {
 			//create ImgPlus out of the input Img
 			ImgPlus<T> imgP = new ImgPlus<>(img);
