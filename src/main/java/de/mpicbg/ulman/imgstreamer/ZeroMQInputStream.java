@@ -48,12 +48,12 @@ public class ZeroMQInputStream extends InputStream
 			if (isZMQready()) readZMQ();
 		}
 
-		if (pos < lim) return buf[pos++];
+		if (pos < lim) return buf[pos++] & 0xFF;
 		else return -1;
 	}
 
+	@Override
 	public int available()
-	throws IOException
 	{
 		return lim-pos;
 	}
