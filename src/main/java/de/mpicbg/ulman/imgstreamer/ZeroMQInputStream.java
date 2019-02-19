@@ -9,53 +9,29 @@ import java.io.InputStream;
 public class ZeroMQInputStream extends InputStream
 {
 	// -------------- buffering stuff --------------
-	private byte[] buf = null;
+	private byte[] buf = new byte[0]; //initially an empty buffer
 	private int pos = 0;
-	private int lim = 0;
 
-	/** Reads another batch of data.
+	/** Reads one (1) byte from the underlying buffer, which is populated
+	 *  from the underlying ZMQ communication.
 	 *
-	 * It is assumed that the caller knows how much data to expect,
-	 * and that she would not ask for more. That is because when the
-	 * internal buffer is empty, the method will poll (a couple of
-	 * times until a waitTimeOut is over) the ZMQ message queue to
-	 * fill the internal buffer. If timeout occurs, the method returns
-	 * with -1, which is a value signalling the end of the stream.
-	 * The method cannot, however, recognize that it needs to wait
-	 * longer because the network stream is possibly not over yet --
-	 * this is why the user has to setup sufficiently large waitTimeOut.
-	 *
-	 * @return The next available byte of the ZMQ message.
+	 * @return The next available byte of the ZMQ message, or -1 if none available.
 	 * @throws IOException If ZMQ.recv() will have some trouble.
 	 */
 	@Override
 	public int read()
 	throws IOException
 	{
-		if (pos == lim)
-		{
-			int waitTime = 0;
-			while (!isZMQready() && waitTime < waitTimeOut)
-			{
-				//we wait 1 second before another read (aka buffer filling) attempt
-				waitTime += 1;
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-			if (isZMQready()) readZMQ();
-		}
+		if (pos == buf.length) readZMQ();
 
-		if (pos < lim) return buf[pos++] & 0xFF;
+		if (pos < buf.length) return buf[pos++] & 0xFF;
 		else return -1;
 	}
 
 	@Override
 	public int available()
 	{
-		return lim-pos;
+		return buf.length - pos;
 	}
 
 	/** inits this InputStream by binding to a local port */
@@ -90,13 +66,6 @@ public class ZeroMQInputStream extends InputStream
 	{
 		waitTimeOut = timeOut;
 		initSocketWithConnect(URL);
-	}
-
-	/** request to close the socket */
-	public
-	void close()
-	{
-		zmqSocket.close();
 	}
 
 	// -------------- ZMQ stuff --------------
@@ -139,18 +108,39 @@ public class ZeroMQInputStream extends InputStream
 		}
 	}
 
-	/** reads the ZMQ message into the buffer, assuming that the content
+	/** Reads the ZMQ message into the buffer, assuming that the content
 	 *  of the current buffer has been completely read out (because this
-	 *  method will "overwrite" it) */
+	 *  method will "overwrite" it).
+	 *
+	 * This method should never block longer than this.waitTimeOut.
+	 * If the timeout occurs, the method silently quits without any
+	 * change to the underlying buffer.
+	 *
+	 * @throws IOException If ZMQ.recv() will have some trouble.
+	 */
 	private
 	void readZMQ()
 	throws IOException
 	{
-		buf = zmqSocket.recv();
-		if (buf == null)
-		    throw new IOException("network reading error");
-		lim = buf.length;
-		pos = 0;
+		int waitTime = 0;
+		while (!isZMQready() && waitTime < waitTimeOut)
+		{
+			//we wait 1 second
+			waitTime += 1;
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+
+		if (isZMQready())
+		{
+			buf = zmqSocket.recv();
+			if (buf == null)
+				 throw new IOException("network reading error");
+			pos = 0;
+		}
 	}
 
 	/** non-blocking pooling of ZMQ message queue,
@@ -159,5 +149,13 @@ public class ZeroMQInputStream extends InputStream
 	boolean isZMQready()
 	{
 		return ( (zmqSocket.getEvents() & ZMQ.EVENT_CONNECTED) == ZMQ.EVENT_CONNECTED );
+	}
+
+	/** request to close the socket */
+	@Override
+	public
+	void close()
+	{
+		zmqSocket.close();
 	}
 }
