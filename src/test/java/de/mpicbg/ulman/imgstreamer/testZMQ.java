@@ -27,6 +27,9 @@ public class testZMQ
 
 		System.out.println("-------------------------------------------------");
 		testByteArray2ImageTransfer(new UnsignedShortType());
+
+		System.out.println("-------------------------------------------------");
+		testImage2ByteArrayTransfer(new UnsignedShortType());
 	}
 
 
@@ -112,6 +115,7 @@ public class testZMQ
 			= fillImg( new ArrayImgFactory(type).create(200,100,5) );
 
 		try {
+			// -------- path outwards --------
 			//stream out a real image into a byte[]
 			final ImgPlus<T> imgP = new ImgPlus<>(img);
 			final ByteArrayOutputStream os = new ByteArrayOutputStream();
@@ -120,6 +124,7 @@ public class testZMQ
 			System.out.println("stream length will be: "+isv.getOutputStreamLength());
 			isv.write(os);
 
+			// -------- path inwards --------
 			ZMQ.Context zmqContext = ZMQ.context(1);
 			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
 			zmqSocket.connect("tcp://localhost:3456");
@@ -130,6 +135,56 @@ public class testZMQ
 
 			zmqSocket.close();
 			zis.close();
+
+			System.out.println("got this image: "+imgPP.getImg().toString()
+			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
+
+			Cursor<T> cP = imgP.getImg().cursor();
+			cP.jumpFwd(50);
+
+			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
+			cPP.jumpFwd(50);
+
+			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
+				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+
+	static <T extends RealType<T> & NativeType<T>>
+	void testImage2ByteArrayTransfer(final T type)
+	{
+		Img<T> img
+			= fillImg( new ArrayImgFactory(type).create(200,100,5) );
+
+		try {
+			// -------- path outwards --------
+			final ImgPlus<T> imgP = new ImgPlus<>(img);
+			ImgStreamer isv = new ImgStreamer( new testStreams.myLogger() );
+			isv.setImageForStreaming(imgP);
+			System.out.println("stream length will be: "+isv.getOutputStreamLength());
+
+			//final ZeroMQOutputStream zos = new ZeroMQOutputStream(3456, 10);
+			final ZeroMQOutputStream zos = new ZeroMQOutputStream("tcp://localhost:3456", 10);
+			isv.write(zos);
+			System.out.println("finito sending");
+
+			// -------- path inwards --------
+			//stream in a real image into a byte[]
+			ZMQ.Context zmqContext = ZMQ.context(1);
+			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			//zmqSocket.connect("tcp://localhost:3456");
+			zmqSocket.bind("tcp://*:3456");
+
+			final ByteArrayInputStream is = new ByteArrayInputStream( zmqSocket.recv() );
+			System.out.println("got byte buffer of length: "+is.available());
+			ImgPlus<? extends RealType<?>> imgPP = isv.readAsRealTypedImg(is);
+
+			zos.close();
+			zmqSocket.close();
 
 			System.out.println("got this image: "+imgPP.getImg().toString()
 			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
