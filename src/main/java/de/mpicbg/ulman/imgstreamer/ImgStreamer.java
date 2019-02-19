@@ -335,8 +335,34 @@ public class ImgStreamer
 	protected
 	byte[] packAndSendPlusData(final ImgPlus<?> img)
 	{
-		//TODO: process the metadata.... from the img to metadata
-		final byte[] metadata = new byte[] { 98,97,97,97,97,97,97,99 };
+		//process (only some) metadata from the img
+		final byte[] md_name = img.getName() != null ? img.getName().getBytes() : null;
+		final int    md_name_length = md_name != null ? md_name.length : 0;
+
+		final byte[] md_source = img.getSource() != null ? img.getSource().getBytes() : null;
+		final int    md_source_length = md_source != null ? md_source.length : 0;
+
+		final int    md_validBits = img.getValidBits();
+
+		//final output buffer with "encoded" metadata:
+		//NB: might not work out if both 'name' and 'source' parts are veeery long
+		final byte[] metadata = new byte[ 4+md_name_length + 4+md_source_length + 4 ];
+		int offset=0;
+
+		//part 'name'
+		intToByteArray(md_name_length, metadata,offset);
+		offset+=4;
+		for (int i=0; i < md_name_length; ++i)
+			metadata[offset++] = md_name[i];
+
+		//part 'source'
+		intToByteArray(md_source_length, metadata,offset);
+		offset+=4;
+		for (int i=0; i < md_source_length; ++i)
+			metadata[offset++] = md_source[i];
+
+		//part 'validBits'
+		intToByteArray(md_validBits, metadata,offset);
 
 		return metadata;
 	}
@@ -344,8 +370,47 @@ public class ImgStreamer
 	protected
 	void receiveAndUnpackPlusData(final byte[] metadata, final ImgPlus<?> img)
 	{
-		//TODO: process the metadata.... from the metadata to img
-		//System.out.println("__found metadata: "+(new String(metadata)));
+		//set the metadata into img
+		int offset=0;
+
+		//part 'name'
+		final byte[] md_name = new byte[ byteArrayToInt(metadata,offset) ];
+		offset+=4;
+		for (int i=0; i < md_name.length; ++i)
+			 md_name[i] = metadata[offset++];
+
+		//part 'source'
+		final byte[] md_source = new byte[ byteArrayToInt(metadata,offset) ];
+		offset+=4;
+		for (int i=0; i < md_source.length; ++i)
+			 md_source[i] = metadata[offset++];
+
+		//part 'validBits'
+		final int md_validBits = byteArrayToInt(metadata,offset);
+
+		img.setName(new String(md_name));
+		img.setSource(new String(md_source));
+		img.setValidBits(md_validBits);
+	}
+
+	private void intToByteArray(final int i, final byte[] ba, final int baOffset)
+	{
+		//MSB format
+		ba[baOffset+0] = (byte)((i >> 24) & 0xFF);
+		ba[baOffset+1] = (byte)((i >> 16) & 0xFF);
+		ba[baOffset+2] = (byte)((i >>  8) & 0xFF);
+		ba[baOffset+3] = (byte)(   i      & 0xFF);
+	}
+
+	private int byteArrayToInt(final byte[] ba, final int baOffset)
+	{
+		//MSB format
+		int i = ((int)ba[baOffset+0] << 24)
+		      | ((int)ba[baOffset+1] << 16)
+		      | ((int)ba[baOffset+2] <<  8)
+		      |  (int)ba[baOffset+3];
+
+		return i;
 	}
 
 
