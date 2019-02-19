@@ -42,18 +42,31 @@ public class ZeroMQsession
 		initSocketWithConnect(URL);
 	}
 
-	/** Sends the current content of the buffer as a solo ZMQ message,
-	 *  the buffer is then reset (pos = 0).
+	/** Sends the content of the buffer as a solo ZMQ message.
 	 *
 	 * This method should never block longer than this.waitTimeOut.
 	 * If the timeout occurs, exception is raised to notify the caller.
 	 *
-	 * @throws IOException If ZMQ.send() will have some trouble.
+	 * @throws IOException If ZMQ.send() will have some trouble, or if
+	 * no confirmation arrives within the waitTimeOut.
 	 */
 	public
 	void writeZMQ(byte[] buf, int pos)
 	throws IOException
 	{
+		//send the data
+		zmqSocket.send(buf,0,pos,0);
+		//
+		//beware! ZMQ does not make a copy of the 'buf' and if it does not send it
+		//right away, the future content of the 'buf' will be sent instead of
+		//the current content (when the connection is eventually established
+		//and if the same 'buf' is re-used)...
+		//
+		//so, we wait for the confirmation (that assures us the 'buf' has really
+		//been transmitted over), or complain
+
+		//wait until we hear back from the recipient,
+		//or until we timeout
 		int waitTime = 0;
 		while (!isRecvReady() && waitTime < waitTimeOut)
 		{
@@ -67,13 +80,15 @@ public class ZeroMQsession
 			}
 		}
 
-		//beware! ZMQ does not make a copy of the 'buf' and if it does not send it
-		//right away, the future content of the 'buf' will be sent instead of
-		//the current content (when the connection is eventually established)...
 		if (isRecvReady())
-			zmqSocket.send(buf,0,pos,0);
+		{
+			final byte[] confMsg = zmqSocket.recv();
+
+			if (confMsg[0] != 'O')
+				throw new IOException("wrong confirmation detected, communication is broken");
+		}
 		else
-			throw new IOException("no connection detected even after "+waitTimeOut+" seconds");
+			throw new IOException("no confirmation detected even after "+waitTimeOut+" seconds");
 	}
 
 	/** Reads the ZMQ message into a new buffer.
@@ -107,10 +122,12 @@ public class ZeroMQsession
 			byte[] buf = zmqSocket.recv();
 			if (buf == null)
 				 throw new IOException("network reading error");
+
+			zmqSocket.send(confirmationMsg);
 			return buf;
 		}
 
-		return new byte[0];
+		return zeroLengthByteArray;
 	}
 
 	/** request to close the session */
@@ -169,4 +186,7 @@ public class ZeroMQsession
 	{
 		return ( (zmqSocket.getEvents() & ZMQ.EVENT_CONNECTED) == ZMQ.EVENT_CONNECTED );
 	}
+
+	private static final byte[] zeroLengthByteArray = new byte[0];
+	private static final byte[] confirmationMsg = new byte[] { 'O','K' };
 }
