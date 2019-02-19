@@ -11,7 +11,7 @@
 
 
   <groupId>de.mpicbg.ulman</groupId>
-  <artifactId>imglib2Stream</artifactId>
+  <artifactId>imglib2ZMQ</artifactId>
   <version>1.0-SNAPSHOT</version>
 
 	<organization>
@@ -21,7 +21,7 @@
 
   <name>DAIS plugin suite</name>
   <description>Scijava/imglib2 images are pinged back and forth over a network...</description>
-  <url>https://github.com/xulman/imglib2Stream</url>
+  <url>https://github.com/xulman/imglib2ZMQ</url>
   <inceptionYear>2017</inceptionYear>
 
   <packaging>jar</packaging>
@@ -56,14 +56,14 @@
 
 
 	<scm>
-		<connection>scm:git:git://github.com/xulman/imglib2Stream</connection>
+		<connection>scm:git:git://github.com/xulman/imglib2ZMQ</connection>
 		<developerConnection>scm:git:localhost:9999</developerConnection>
 		<tag>HEAD</tag>
-		<url>https://github.com/xulman/imglib2Stream</url>
+		<url>https://github.com/xulman/imglib2ZMQ</url>
 	</scm>
 	<issueManagement>
 		<system>GitHub Issues</system>
-		<url>http://github.com/xulman/imglib2Stream/issues</url>
+		<url>http://github.com/xulman/imglib2ZMQ/issues</url>
 	</issueManagement>
 	<ciManagement>
 		<system>None</system>
@@ -72,7 +72,7 @@
 	<properties>
 		<license.licenseName>cc0</license.licenseName>
 		<license.copyrightOwners>N/A</license.copyrightOwners>
-		<license.projectName>imglib2Stream</license.projectName>
+		<license.projectName>imglib2ZMQ</license.projectName>
 	</properties>
 
 
@@ -85,12 +85,9 @@
 
   <dependencies>
     <dependency>
-      <groupId>org.scijava</groupId>
-      <artifactId>scijava-common</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>net.imagej</groupId>
-      <artifactId>imagej</artifactId>
+      <groupId>de.mpicbg.ulman</groupId>
+      <artifactId>imglib2Stream</artifactId>
+      <version>1.0-SNAPSHOT</version>
     </dependency>
     <dependency>
       <groupId>org.zeromq</groupId>
