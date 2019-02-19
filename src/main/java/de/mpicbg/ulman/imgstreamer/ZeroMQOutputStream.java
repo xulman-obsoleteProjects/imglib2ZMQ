@@ -13,7 +13,7 @@ import java.io.OutputStream;
 public class ZeroMQOutputStream extends OutputStream
 {
 	// -------------- buffering stuff --------------
-	private final byte[] buf = new byte[1<<20]; //= 1 MB
+	private final byte[] buf = new byte[1<<25]; //= 32 MB
 	private int pos = 0;
 
 	/** Writes one (1) byte into the underlying buffer, which is possibly
