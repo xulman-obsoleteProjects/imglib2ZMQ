@@ -24,7 +24,7 @@ public class ZeroMQOutputStream extends OutputStream
 		if (pos == buf.length) writeZMQ();
 		//NB: flush() either returns with pos=0, or with an exception...
 
-		buf[pos++] = (byte)(b & 0xFF); //TODO: is the masking needed?
+		buf[pos++] = (byte)b;
 	}
 
 	@Override
