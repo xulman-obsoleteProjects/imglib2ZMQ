@@ -24,13 +24,13 @@ public class testZMQ
 
 		System.out.println("-------------------------------------------------");
 		testBufferedReadOut();
+		*/
 
 		System.out.println("-------------------------------------------------");
 		testByteArray2ImageTransfer(new UnsignedShortType());
 
 		System.out.println("-------------------------------------------------");
 		testImage2ByteArrayTransfer(new UnsignedShortType());
-		*/
 
 		System.out.println("-------------------------------------------------");
 		testImage2Image_ConcurrentThreads(new UnsignedShortType());
@@ -118,6 +118,9 @@ public class testZMQ
 		Img<T> img
 			= fillImg( new ArrayImgFactory(type).create(200,100,5) );
 
+		ZMQ.Socket zmqSocket = null;
+		ZeroMQInputStream zis = null;
+
 		try {
 			// -------- path outwards --------
 			//stream out a real image into a byte[]
@@ -129,32 +132,26 @@ public class testZMQ
 			isv.write(os);
 
 			ZMQ.Context zmqContext = ZMQ.context(1);
-			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			zmqSocket = zmqContext.socket(ZMQ.PAIR);
 			zmqSocket.connect("tcp://localhost:3456");
 			zmqSocket.send(os.toByteArray());
 
 			// -------- path inwards --------
-			final ZeroMQInputStream zis = new ZeroMQInputStream(3456, 10);
+			zis = new ZeroMQInputStream(3456, 10);
 			ImgPlus<? extends RealType<?>> imgPP = isv.readAsRealTypedImg(zis);
-
-			zmqSocket.close();
-			zis.close();
 
 			// -------- testing --------
 			System.out.println("got this image: "+imgPP.getImg().toString()
 			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
-
-			Cursor<T> cP = imgP.getImg().cursor();
-			cP.jumpFwd(50);
-
-			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
-			cPP.jumpFwd(50);
-
-			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
-				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+			System.out.println("--> send and receive images are the same: "
+				+areBothImagesTheSame(imgP,(ImgPlus)imgPP) +"\n");
 		}
 		catch (IOException e) {
 			e.printStackTrace();
+		}
+		finally {
+			if (zmqSocket != null) zmqSocket.close();
+			if (zis != null) zis.close();
 		}
 	}
 
@@ -165,6 +162,11 @@ public class testZMQ
 		Img<T> img
 			= fillImg( new ArrayImgFactory(type).create(200,100,5) );
 
+		ZMQ.Socket zmqSocket = null;
+		ZeroMQOutputStream zos = null;
+
+		System.out.println("--> this test should fail complaining about \"no confirmation detected\"");
+
 		try {
 			// -------- path outwards --------
 			final ImgPlus<T> imgP = new ImgPlus<>(img);
@@ -172,15 +174,15 @@ public class testZMQ
 			isv.setImageForStreaming(imgP);
 			System.out.println("stream length will be: "+isv.getOutputStreamLength());
 
-			//final ZeroMQOutputStream zos = new ZeroMQOutputStream(3456, 10);
-			final ZeroMQOutputStream zos = new ZeroMQOutputStream("tcp://localhost:3456", 10);
+			//zos = new ZeroMQOutputStream(3456, 10);
+			zos = new ZeroMQOutputStream("tcp://localhost:3456", 10);
 			isv.write(zos);
 			System.out.println("finito sending");
 
 			// -------- path inwards --------
 			//stream in a real image into a byte[]
 			ZMQ.Context zmqContext = ZMQ.context(1);
-			ZMQ.Socket zmqSocket = zmqContext.socket(ZMQ.PAIR);
+			zmqSocket = zmqContext.socket(ZMQ.PAIR);
 			//zmqSocket.connect("tcp://localhost:3456");
 			zmqSocket.bind("tcp://*:3456");
 
@@ -194,18 +196,15 @@ public class testZMQ
 			// -------- testing --------
 			System.out.println("got this image: "+imgPP.getImg().toString()
 			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
-
-			Cursor<T> cP = imgP.getImg().cursor();
-			cP.jumpFwd(50);
-
-			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
-			cPP.jumpFwd(50);
-
-			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
-				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+			System.out.println("--> send and receive images are the same: "
+				+areBothImagesTheSame(imgP,(ImgPlus)imgPP) +"\n");
 		}
 		catch (IOException e) {
 			e.printStackTrace();
+		}
+		finally {
+			if (zmqSocket != null) zmqSocket.close();
+			if (zos != null) zos.close();
 		}
 	}
 
