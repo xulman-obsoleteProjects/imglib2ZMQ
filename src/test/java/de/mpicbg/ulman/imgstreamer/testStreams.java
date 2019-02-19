@@ -58,6 +58,9 @@ public class testStreams
 		try {
 			//create ImgPlus out of the input Img
 			ImgPlus<T> imgP = new ImgPlus<>(img);
+			imgP.setName(new String("qwerty"));
+			imgP.setSource(new String("qwertyiiii"));
+			imgP.setValidBits(1024);
 
 			//sample output stream
 			final OutputStream os = new FileOutputStream("/tmp/out.dat");
