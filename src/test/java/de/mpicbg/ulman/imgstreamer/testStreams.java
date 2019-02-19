@@ -81,18 +81,39 @@ public class testStreams
 			System.out.println("got this image: "+imgPP.getImg().toString()
 			                  +" of "+imgPP.getImg().firstElement().getClass().getSimpleName());
 
-			Cursor<T> cP = imgP.getImg().cursor();
-			cP.jumpFwd(50);
-
-			Cursor<? extends RealType<?>> cPP = imgPP.getImg().cursor();
-			cPP.jumpFwd(50);
-
-			if (cP.get().getRealDouble() != cPP.get().getRealDouble())
-				System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+			System.out.println("--> send and receive images are the same: "
+				+areBothImagesTheSame(imgP,(ImgPlus)imgPP));
 
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	static <T extends RealType<T>, U extends RealType<U>>
+	boolean areBothImagesTheSame(final ImgPlus<T> imgA, final ImgPlus<U> imgB)
+	{
+		Cursor<T> cA = imgA.getImg().cursor();
+		cA.jumpFwd(50);
+
+		Cursor<U> cB = imgB.getImg().cursor();
+		cB.jumpFwd(50);
+
+		if (cA.get().getRealDouble() != cB.get().getRealDouble())
+		{
+			System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+			return false;
+		}
+
+		//one test more never hurts...
+		cA.jumpFwd(50);
+		cB.jumpFwd(50);
+		if (cA.get().getRealDouble() != cB.get().getRealDouble())
+		{
+			System.out.println("----------> PIXEL VALUES MISMATCH! <----------");
+			return false;
+		}
+
+		return true;
 	}
 
 
